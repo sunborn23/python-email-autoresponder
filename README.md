@@ -87,8 +87,9 @@ For info on how to craft the cron expression yourself, run `man crontab`.
 ### ToDos
 
 * handle mails from incorrect senders
-* check config for correctness during initialization
 * test email folders during initialization
 * implement proper error handling
+* improve error messages
 * switch encoding of config.ini to non-Windows
 * make use of reply-to field optional
+* consolidate logging output
