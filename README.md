@@ -13,7 +13,7 @@ To run it you'll only need  **python3**.
 
 To install, simply download a copy of the project (see screenshot below) and extract it to whatever folder you like.
 
-![Github Archive Download](https://user-images.githubusercontent.com/6501308/33236223-aefb84c8-d24c-11e7-8fdc-46c00eb2377d.PNG)
+![Github Archive Download](https://user-images.githubusercontent.com/6501308/33236233-4de2d6fe-d24d-11e7-9581-9a59d9615c12.PNG)
 
 ### Configuration 
 
