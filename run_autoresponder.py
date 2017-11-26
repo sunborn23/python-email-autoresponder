@@ -4,6 +4,7 @@ import email
 import email.header
 import email.mime.text
 import imaplib
+import re
 import smtplib
 import sys
 
@@ -11,6 +12,7 @@ config = None
 incoming_mail_server = None
 outgoing_mail_server = None
 processed_mail_counter = 0
+pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
 
 
 def run():
@@ -145,7 +147,7 @@ def process_email(mail):
     mail_sender = str(mail_sender[0], 'UTF-8')
     if expected_mail_sender in mail_sender:
         reply_to_email(mail)
-        # delete_email(mail)
+        delete_email(mail)
         global processed_mail_counter
         processed_mail_counter += 1
         print("Replied to and deleted " + str(processed_mail_counter) + " emails.")
@@ -172,10 +174,21 @@ def send_email(receiver_email, email_subject, email_body):
 
 
 def delete_email(mail):
-    mail_id = mail['autoresponder_email_id']
-    # TODO copy to trash before deletion
-    incoming_mail_server.store(mail_id, '+FLAGS', '\Deleted')
+    trash = str(config["mail server settings"]["mailserver.folders.trash.name"])
+    mail_index = mail['autoresponder_email_id']
+    (resp, data) = incoming_mail_server.fetch(mail_index, "(UID)")
+    mail_uid = parse_uid(str(data[0], 'UTF-8'))
+    result = incoming_mail_server.uid('COPY', mail_uid, trash)
+    if result[0] != "OK":
+        print("Copying mail to trash failed. Deleting anyways to prevent multiple response mails. "
+              "Reason for failure: " + str(result))
+    incoming_mail_server.store(mail_index, '+FLAGS', '\Deleted')
     incoming_mail_server.expunge()
+
+
+def parse_uid(data):
+    match = pattern_uid.match(data)
+    return match.group('uid')
 
 
 run()
