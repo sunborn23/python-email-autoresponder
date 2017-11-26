@@ -48,9 +48,26 @@ def display_help_text():
 
 
 def load_config_from_file(file_path):
+    config_file = configparser.ConfigParser()
+    config_file.read(file_path, encoding="ISO-8859-1")
     global config
-    config = configparser.ConfigParser()
-    config.read(file_path, encoding="ISO-8859-1")
+    config = {
+        'in.user': str(config_file["login credentials"]["mailserver.incoming.username"]),
+        'in.pw': str(config_file["login credentials"]["mailserver.incoming.password"]),
+        'out.user': str(config_file["login credentials"]["mailserver.outgoing.username"]),
+        'out.pw': str(config_file["login credentials"]["mailserver.outgoing.password"]),
+        'display.name': str(config_file["login credentials"]["mailserver.outgoing.display.name"]),
+        'display.mail': str(config_file["login credentials"]["mailserver.outgoing.display.mail"]),
+        'in.host': str(config_file["mail server settings"]["mailserver.incoming.imap.host"]),
+        'in.port': str(config_file["mail server settings"]["mailserver.incoming.imap.port.ssl"]),
+        'out.host': str(config_file["mail server settings"]["mailserver.outgoing.smtp.host"]),
+        'out.port': str(config_file["mail server settings"]["mailserver.outgoing.smtp.port.tls"]),
+        'folders.inbox': str(config_file["mail server settings"]["mailserver.folders.inbox.name"]),
+        'folders.trash': str(config_file["mail server settings"]["mailserver.folders.trash.name"]),
+        'request.from': str(config_file["mail content settings"]["mail.request.from"]),
+        'reply.subject': str(config_file["mail content settings"]["mail.reply.subject"].strip()),
+        'reply.body': str(config_file["mail content settings"]["mail.reply.body"].strip())
+    }
 
 
 def connect_to_mail_servers():
@@ -59,21 +76,17 @@ def connect_to_mail_servers():
 
 
 def connect_to_imap():
-    host = str(config["mail server settings"]["mailserver.incoming.imap.host"])
-    port = str(config["mail server settings"]["mailserver.incoming.imap.port.ssl"])
-    user = str(config["login credentials"]["mailserver.incoming.username"])
-    password = str(config["login credentials"]["mailserver.incoming.password"])
-    print("Connecting to IMAP server '" + host
-          + "' on port " + port + " as user '" + user + "'.")
+    print("Connecting to IMAP server '" + config['in.host']
+          + "' on port " + config['in.port'] + " as user '" + config['in.user'] + "'.")
 
     global incoming_mail_server
-    incoming_mail_server = imaplib.IMAP4_SSL(host, port)
+    incoming_mail_server = imaplib.IMAP4_SSL(config['in.host'], config['in.port'])
 
     try:
-        (retcode, capabilities) = incoming_mail_server.login(user, password)
+        (retcode, capabilities) = incoming_mail_server.login(config['in.user'], config['in.pw'])
         if retcode != "OK":
             print_error_and_exit("Login failed with return code '" + retcode + "'!")
-        print("Login success!")
+        print("IMAP login successful!")
     except Exception as e:
         print_error_and_exit(e)
 
@@ -97,30 +110,25 @@ def print_error_and_exit(error):
 
 
 def connect_to_smtp():
-    host = str(config["mail server settings"]["mailserver.outgoing.smtp.host"])
-    port = str(config["mail server settings"]["mailserver.outgoing.smtp.port.tls"])
-    user = str(config["login credentials"]["mailserver.outgoing.username"])
-    password = str(config["login credentials"]["mailserver.outgoing.password"])
-    print("Connecting to SMTP server '" + host
-          + "' on port " + port + " as user '" + user + "'.")
+    print("Connecting to SMTP server '" + config['out.host']
+          + "' on port " + config['out.port'] + " as user '" + config['out.user'] + "'.")
 
     global outgoing_mail_server
-    outgoing_mail_server = smtplib.SMTP(host, port)
+    outgoing_mail_server = smtplib.SMTP(config['out.host'], config['out.port'])
     outgoing_mail_server.starttls()
 
     try:
-        (retcode, capabilities) = outgoing_mail_server.login(user, password)
+        (retcode, capabilities) = outgoing_mail_server.login(config['out.user'], config['out.pw'])
         if retcode != 235:
             print_error_and_exit("Login failed with return code '" + str(retcode) + "'!")
-        print("Login success!")
+        print("SMTP login successful!")
     except Exception as e:
         print_error_and_exit(e)
 
 
 def fetch_emails():
-    inbox = str(config["mail server settings"]["mailserver.folders.inbox.name"])
     # get the message ids from the inbox folder
-    incoming_mail_server.select(inbox)
+    incoming_mail_server.select(config['folders.inbox'])
     (retcode, message_ids) = incoming_mail_server.search(None, 'ALL')
     if retcode == 'OK':
         messages = []
@@ -142,47 +150,37 @@ def fetch_emails():
 
 
 def process_email(mail):
-    expected_mail_sender = str(config["mail content settings"]["mail.request.from"])
     mail_sender = email.header.decode_header(mail['From'])[1]
     mail_sender = str(mail_sender[0], 'UTF-8')
-    if expected_mail_sender in mail_sender:
+    if config['request.from'] in mail_sender:
         reply_to_email(mail)
         delete_email(mail)
         global processed_mail_counter
         processed_mail_counter += 1
-        print("Replied to and deleted " + str(processed_mail_counter) + " emails.")
+        print("Replied to and deleted " + str(processed_mail_counter) + " emails in total.")
     else:
         # TODO handle mails from incorrect senders
         pass
 
 
 def reply_to_email(mail):
-    reply_mail_subject = str(config["mail content settings"]["mail.reply.subject"]).strip()
-    reply_mail_body = str(config["mail content settings"]["mail.reply.body"]).strip()
-    reply_to = email.header.decode_header(mail['Reply-To'])[0][0]
-    send_email(reply_to, reply_mail_subject, reply_mail_body)
-
-
-def send_email(receiver_email, email_subject, email_body):
-    sender_name = str(config["login credentials"]["mailserver.outgoing.display.name"])
-    sender_email = str(config["login credentials"]["mailserver.outgoing.display.mail"])
-    message = email.mime.text.MIMEText(email_body)
-    message['Subject'] = email_subject
+    receiver_email = email.header.decode_header(mail['Reply-To'])[0][0]
+    message = email.mime.text.MIMEText(config['reply.body'])
+    message['Subject'] = config['reply.subject']
     message['To'] = receiver_email
-    message['From'] = email.utils.formataddr((str(email.header.Header(sender_name, 'utf-8')), sender_email))
-    outgoing_mail_server.sendmail(sender_email, receiver_email, message.as_string())
+    message['From'] = email.utils.formataddr((
+        str(email.header.Header(config['display.name'], 'utf-8')), config['display.mail']))
+    outgoing_mail_server.sendmail(config['display.mail'], receiver_email, message.as_string())
 
 
 def delete_email(mail):
-    trash = str(config["mail server settings"]["mailserver.folders.trash.name"])
-    mail_index = mail['autoresponder_email_id']
-    (resp, data) = incoming_mail_server.fetch(mail_index, "(UID)")
+    (resp, data) = incoming_mail_server.fetch(mail['autoresponder_email_id'], "(UID)")
     mail_uid = parse_uid(str(data[0], 'UTF-8'))
-    result = incoming_mail_server.uid('COPY', mail_uid, trash)
+    result = incoming_mail_server.uid('COPY', mail_uid, config['folders.trash'])
     if result[0] != "OK":
         print("Copying mail to trash failed. Deleting anyways to prevent multiple response mails. "
               "Reason for failure: " + str(result))
-    incoming_mail_server.store(mail_index, '+FLAGS', '\Deleted')
+    incoming_mail_server.uid('STORE', mail_uid, '+FLAGS', '(\Deleted)')
     incoming_mail_server.expunge()
 
 
