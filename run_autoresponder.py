@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import configparser
+import datetime
 import email
 import email.header
 import email.mime.text
@@ -16,17 +17,18 @@ pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
 
 
 def run():
-    print("--- Python Reply-To Autoresponder ---")
+    start_time = datetime.datetime.now()
     initialize()
     connect_to_mail_servers()
     mails = fetch_emails()
     for mail in mails:
         process_email(mail)
-    print("Closing connection...")
+    print("Replied to and deleted " + str(processed_mail_counter) + " emails in total.")
     incoming_mail_server.close()
     incoming_mail_server.logout()
     outgoing_mail_server.quit()
-    print("Script run successful.")
+    run_time = datetime.datetime.now() - start_time
+    print("Script run successful in " + str(run_time.total_seconds()) + " seconds.")
 
 
 def initialize():
@@ -77,7 +79,7 @@ def connect_to_mail_servers():
 
 def connect_to_imap():
     print("Connecting to IMAP server '" + config['in.host']
-          + "' on port " + config['in.port'] + " as user '" + config['in.user'] + "'.")
+          + "' on port " + config['in.port'] + " as user '" + config['in.user'] + "'... ", end='')
 
     global incoming_mail_server
     incoming_mail_server = imaplib.IMAP4_SSL(config['in.host'], config['in.port'])
@@ -85,8 +87,9 @@ def connect_to_imap():
     try:
         (retcode, capabilities) = incoming_mail_server.login(config['in.user'], config['in.pw'])
         if retcode != "OK":
+            print("FAIL")
             print_error_and_exit("Login failed with return code '" + retcode + "'!")
-        print("IMAP login successful!")
+        print("SUCCESS")
     except Exception as e:
         print_error_and_exit(e)
 
@@ -111,7 +114,7 @@ def print_error_and_exit(error):
 
 def connect_to_smtp():
     print("Connecting to SMTP server '" + config['out.host']
-          + "' on port " + config['out.port'] + " as user '" + config['out.user'] + "'.")
+          + "' on port " + config['out.port'] + " as user '" + config['out.user'] + "'... ", end='')
 
     global outgoing_mail_server
     outgoing_mail_server = smtplib.SMTP(config['out.host'], config['out.port'])
@@ -120,8 +123,9 @@ def connect_to_smtp():
     try:
         (retcode, capabilities) = outgoing_mail_server.login(config['out.user'], config['out.pw'])
         if retcode != 235:
+            print("FAIL")
             print_error_and_exit("Login failed with return code '" + str(retcode) + "'!")
-        print("SMTP login successful!")
+        print("SUCCESS")
     except Exception as e:
         print_error_and_exit(e)
 
@@ -157,7 +161,6 @@ def process_email(mail):
         delete_email(mail)
         global processed_mail_counter
         processed_mail_counter += 1
-        print("Replied to and deleted " + str(processed_mail_counter) + " emails in total.")
     else:
         # TODO handle mails from incorrect senders
         pass
