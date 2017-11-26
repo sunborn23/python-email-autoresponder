@@ -1,4 +1,4 @@
-# Python Reply-To Autoresponder
+# Python E-Mail Autoresponder
 
 Simple python script that connects to a mail server via IMAP and SMTP and replies to 
 all emails in the inbox coming from a certain sender address using the Reply-To header.
@@ -90,6 +90,5 @@ For info on how to craft the cron expression yourself, run `man crontab`.
 * test email folders during initialization
 * implement proper error handling
 * improve error messages
-* switch encoding of config.ini to non-Windows
 * make use of reply-to field optional
 * consolidate logging output

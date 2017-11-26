@@ -51,7 +51,7 @@ def display_help_text():
 
 def load_config_from_file(file_path):
     config_file = configparser.ConfigParser()
-    config_file.read(file_path, encoding="ISO-8859-1")
+    config_file.read(file_path, encoding="UTF-8")
     global config
     config = {
         'in.user': str(config_file["login credentials"]["mailserver.incoming.username"]),
