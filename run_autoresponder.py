@@ -54,21 +54,21 @@ def load_config_from_file(file_path):
     config_file.read(file_path, encoding="UTF-8")
     global config
     config = {
-        'in.user': str(config_file["login credentials"]["mailserver.incoming.username"]),
-        'in.pw': str(config_file["login credentials"]["mailserver.incoming.password"]),
-        'out.user': str(config_file["login credentials"]["mailserver.outgoing.username"]),
-        'out.pw': str(config_file["login credentials"]["mailserver.outgoing.password"]),
-        'display.name': str(config_file["login credentials"]["mailserver.outgoing.display.name"]),
-        'display.mail': str(config_file["login credentials"]["mailserver.outgoing.display.mail"]),
-        'in.host': str(config_file["mail server settings"]["mailserver.incoming.imap.host"]),
-        'in.port': str(config_file["mail server settings"]["mailserver.incoming.imap.port.ssl"]),
-        'out.host': str(config_file["mail server settings"]["mailserver.outgoing.smtp.host"]),
-        'out.port': str(config_file["mail server settings"]["mailserver.outgoing.smtp.port.tls"]),
-        'folders.inbox': str(config_file["mail server settings"]["mailserver.folders.inbox.name"]),
-        'folders.trash': str(config_file["mail server settings"]["mailserver.folders.trash.name"]),
-        'request.from': str(config_file["mail content settings"]["mail.request.from"]),
-        'reply.subject': str(config_file["mail content settings"]["mail.reply.subject"].strip()),
-        'reply.body': str(config_file["mail content settings"]["mail.reply.body"].strip())
+        'in.user': safe_cast(config_file["login credentials"]["mailserver.incoming.username"], str),
+        'in.pw': safe_cast(config_file["login credentials"]["mailserver.incoming.password"], str),
+        'out.user': safe_cast(config_file["login credentials"]["mailserver.outgoing.username"], str),
+        'out.pw': safe_cast(config_file["login credentials"]["mailserver.outgoing.password"], str),
+        'display.name': safe_cast(config_file["login credentials"]["mailserver.outgoing.display.name"], str),
+        'display.mail': safe_cast(config_file["login credentials"]["mailserver.outgoing.display.mail"], str),
+        'in.host': safe_cast(config_file["mail server settings"]["mailserver.incoming.imap.host"], str),
+        'in.port': safe_cast(config_file["mail server settings"]["mailserver.incoming.imap.port.ssl"], str),
+        'out.host': safe_cast(config_file["mail server settings"]["mailserver.outgoing.smtp.host"], str),
+        'out.port': safe_cast(config_file["mail server settings"]["mailserver.outgoing.smtp.port.tls"], str),
+        'folders.inbox': safe_cast(config_file["mail server settings"]["mailserver.folders.inbox.name"], str),
+        'folders.trash': safe_cast(config_file["mail server settings"]["mailserver.folders.trash.name"], str),
+        'request.from': safe_cast(config_file["mail content settings"]["mail.request.from"], str),
+        'reply.subject': safe_cast(config_file["mail content settings"]["mail.reply.subject"], str).strip(),
+        'reply.body': safe_cast(config_file["mail content settings"]["mail.reply.body"], str).strip()
     }
 
 
@@ -154,11 +154,12 @@ def fetch_emails():
 
 
 def process_email(mail):
-    mail_sender = email.header.decode_header(mail['From'])[1]
-    mail_sender = str(mail_sender[0], 'UTF-8')
+    mail_from = email.header.decode_header(mail['From'])
+    mail_sender = mail_from[-1]
+    mail_sender = safe_cast(mail_sender[0], str, 'UTF-8')
     if config['request.from'] in mail_sender:
         reply_to_email(mail)
-        delete_email(mail)
+        # delete_email(mail)
         global processed_mail_counter
         processed_mail_counter += 1
     else:
@@ -172,13 +173,13 @@ def reply_to_email(mail):
     message['Subject'] = config['reply.subject']
     message['To'] = receiver_email
     message['From'] = email.utils.formataddr((
-        str(email.header.Header(config['display.name'], 'utf-8')), config['display.mail']))
+        safe_cast(email.header.Header(config['display.name'], 'utf-8'), str), config['display.mail']))
     outgoing_mail_server.sendmail(config['display.mail'], receiver_email, message.as_string())
 
 
 def delete_email(mail):
     (resp, data) = incoming_mail_server.fetch(mail['autoresponder_email_id'], "(UID)")
-    mail_uid = parse_uid(str(data[0], 'UTF-8'))
+    mail_uid = parse_uid(safe_cast(data[0], str, 'UTF-8'))
     result = incoming_mail_server.uid('COPY', mail_uid, config['folders.trash'])
     if result[0] != "OK":
         print("Copying mail to trash failed. Deleting anyways to prevent multiple response mails. "
@@ -190,6 +191,16 @@ def delete_email(mail):
 def parse_uid(data):
     match = pattern_uid.match(data)
     return match.group('uid')
+
+
+def safe_cast(obj, to_type, options=None):
+    try:
+        if options is None:
+            return to_type(obj)
+        else:
+            return to_type(obj, options)
+    except ValueError and TypeError:
+        return obj
 
 
 run()
