@@ -130,20 +130,26 @@ def do_connect_to_smtp():
 def fetch_emails():
     # get the message ids from the inbox folder
     incoming_mail_server.select(config['folders.inbox'])
-    (retcode, message_ids) = incoming_mail_server.search(None, 'ALL')
+    (retcode, message_indices) = incoming_mail_server.search(None, 'ALL')
     if retcode == 'OK':
         messages = []
-        for message_id in message_ids[0].split():
-            # get the actual message for the id
-            (retcode, data) = incoming_mail_server.fetch(message_id, '(RFC822)')
+        for message_index in message_indices[0].split():
+            # get the actual message for the current index
+            (retcode, data) = incoming_mail_server.fetch(message_index, '(RFC822)')
             if retcode == 'OK':
                 # parse the message into a useful format
                 message = email.message_from_string(data[0][1].decode('utf-8'))
-                message['autoresponder_email_id'] = message_id
-                messages.append(message)
+                (retcode, data) = incoming_mail_server.fetch(message_index, "(UID)")
+                if retcode == 'OK':
+                    mail_uid = parse_uid(cast(data[0], str, 'UTF-8'))
+                    message['mailserver_email_uid'] = mail_uid
+                    messages.append(message)
+                else:
+                    statistics['mails_loading_error'] += 1
+                    log_warning("Failed to get UID for email with index '" + message_index + "'.")
             else:
                 statistics['mails_loading_error'] += 1
-                log_warning("Failed to get email with id '" + message_id + "'.")
+                log_warning("Failed to get email with index '" + message_index + "'.")
         statistics['mails_total'] = len(messages)
         return messages
     else:
@@ -176,14 +182,12 @@ def reply_to_email(mail):
 
 
 def delete_email(mail):
-    (resp, data) = incoming_mail_server.fetch(mail['autoresponder_email_id'], "(UID)")
-    mail_uid = parse_uid(cast(data[0], str, 'UTF-8'))
-    result = incoming_mail_server.uid('COPY', mail_uid, config['folders.trash'])
+    result = incoming_mail_server.uid('COPY', mail['mailserver_email_uid'], config['folders.trash'])
     if result[0] == "OK":
         statistics['mails_in_trash'] += 1
     else:
         log_warning("Copying email to trash failed. Reason: " + str(result))
-    incoming_mail_server.uid('STORE', mail_uid, '+FLAGS', '(\Deleted)')
+    incoming_mail_server.uid('STORE', mail['mailserver_email_uid'], '+FLAGS', '(\Deleted)')
     incoming_mail_server.expunge()
 
 
@@ -226,12 +230,13 @@ def log_statistics():
     message = "Executed "
     message += "without warnings " if total_warnings is 0 else "with " + str(total_warnings) + " warnings "
     message += "in " + str(run_time.total_seconds()) + " seconds. "
-    message += "Got " + str(statistics['mails_total']) + " mails in total"
-    message += ". " if wrong_sender_count is 0 else " with " + str(wrong_sender_count) + " mails from wrong senders. "
+    message += "Found " + str(statistics['mails_total']) + " emails in inbox"
+    message += ". " if wrong_sender_count is 0 else " with " + str(wrong_sender_count) + " emails from wrong senders. "
+    message += "Replied to " + str(statistics['mails_processed']) + " emails. "
     if total_warnings is not 0:
-        message += "Encountered " + str(loading_errors) + " errors while loading mails, " + \
-                   str(processing_errors) + " errors while processing mails and " + \
-                   str(moving_errors) + " errors while moving mails to trash."
+        message += "Encountered " + str(loading_errors) + " errors while loading emails, " + \
+                   str(processing_errors) + " errors while processing emails and " + \
+                   str(moving_errors) + " errors while moving emails to trash."
     print(message)
 
 

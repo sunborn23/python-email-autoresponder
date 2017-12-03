@@ -83,7 +83,3 @@ You can use any [Online](https://crontab-generator.org/)
 [Generator](http://cron.nmonitoring.com/cron-generator.html) for generating other cron expressions.
 
 For info on how to craft the cron expression yourself, run `man crontab`.
-
-### ToDos
-
-* make use of reply-to field optional
