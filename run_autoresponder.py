@@ -18,9 +18,9 @@ pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
 
 def run():
     start_time = datetime.datetime.now()
-    initialize()
+    initialize_configuration()
     connect_to_mail_servers()
-    check_folder_configuration()
+    check_folder_names()
     mails = fetch_emails()
     for mail in mails:
         process_email(mail)
@@ -32,7 +32,7 @@ def run():
     print("Script run successful in " + str(run_time.total_seconds()) + " seconds.")
 
 
-def initialize():
+def initialize_configuration():
     if "--help" in sys.argv or "-h" in sys.argv:
         display_help_text()
     config_file_location = "autoresponder.config.ini"
@@ -40,14 +40,6 @@ def initialize():
         config_file_location = sys.argv[2]
     print("Using '" + config_file_location + "' as location for config file.")
     load_config_from_file(config_file_location)
-
-
-def display_help_text():
-    print("Options:")
-    print("\t--help: Display this help information")
-    print("\t--config-path <path/to/config/file>: "
-          "Override path to config file (defaults to same directory as the script is)")
-    exit(1)
 
 
 def load_config_from_file(file_path):
@@ -78,7 +70,7 @@ def connect_to_mail_servers():
     connect_to_smtp()
 
 
-def check_folder_configuration():
+def check_folder_names():
     (retcode, msg_count) = incoming_mail_server.select(config['folders.inbox'])
     if retcode != "OK":
         print_error_and_exit("Inbox folder does not exist: " + config['folders.inbox'])
@@ -103,24 +95,6 @@ def connect_to_imap():
         print("SUCCESS")
     except Exception as e:
         print_error_and_exit(e)
-
-
-def print_error_and_exit(error):
-    print("Unexpected error occurred!")
-    print(str(error))
-    global incoming_mail_server
-    if incoming_mail_server is not None:
-        try:
-            incoming_mail_server.close()
-            incoming_mail_server.logout()
-        except Exception:
-            pass
-    if outgoing_mail_server is not None:
-        try:
-            outgoing_mail_server.quit()
-        except Exception:
-            pass
-    exit(-1)
 
 
 def connect_to_smtp():
@@ -212,6 +186,32 @@ def safe_cast(obj, to_type, options=None):
             return to_type(obj, options)
     except ValueError and TypeError:
         return obj
+
+
+def print_error_and_exit(error):
+    print("Unexpected error occurred!")
+    print(str(error))
+    global incoming_mail_server
+    if incoming_mail_server is not None:
+        try:
+            incoming_mail_server.close()
+            incoming_mail_server.logout()
+        except Exception:
+            pass
+    if outgoing_mail_server is not None:
+        try:
+            outgoing_mail_server.quit()
+        except Exception:
+            pass
+    exit(-1)
+
+
+def display_help_text():
+    print("Options:")
+    print("\t--help: Display this help information")
+    print("\t--config-path <path/to/config/file>: "
+          "Override path to config file (defaults to same directory as the script is)")
+    exit(1)
 
 
 run()
