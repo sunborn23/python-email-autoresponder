@@ -65,8 +65,8 @@ def load_config_from_file(file_path):
         'in.port': safe_cast(config_file["mail server settings"]["mailserver.incoming.imap.port.ssl"], str),
         'out.host': safe_cast(config_file["mail server settings"]["mailserver.outgoing.smtp.host"], str),
         'out.port': safe_cast(config_file["mail server settings"]["mailserver.outgoing.smtp.port.tls"], str),
-        'folders.inbox': safe_cast(config_file["mail server settings"]["mailserver.folders.inbox.name"], str),
-        'folders.trash': safe_cast(config_file["mail server settings"]["mailserver.folders.trash.name"], str),
+        'folders.inbox': safe_cast(config_file["mail server settings"]["mailserver.incoming.folders.inbox.name"], str),
+        'folders.trash': safe_cast(config_file["mail server settings"]["mailserver.incoming.folders.trash.name"], str),
         'request.from': safe_cast(config_file["mail content settings"]["mail.request.from"], str),
         'reply.subject': safe_cast(config_file["mail content settings"]["mail.reply.subject"], str).strip(),
         'reply.body': safe_cast(config_file["mail content settings"]["mail.reply.body"], str).strip()
