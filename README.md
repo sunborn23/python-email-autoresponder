@@ -7,6 +7,7 @@ Mails that have been replied to are deleted afterwards.
 ### Dependencies
 
 This script runs on python3 and is written for the purpose of running as a cronjob.
+
 To run it you'll only need  **python3**.
 
 ### Installation
@@ -14,6 +15,12 @@ To run it you'll only need  **python3**.
 To install, simply download a copy of the project (see screenshot below) and extract it to whatever folder you like.
 
 ![Github Archive Download](https://user-images.githubusercontent.com/6501308/33236233-4de2d6fe-d24d-11e7-9581-9a59d9615c12.PNG)
+
+Alternatively, on UNIX systems you can run
+
+``wget https://github.com/sunborn23/python-email-autoresponder/archive/master.zip && unzip master.zip``
+
+to download and then extract all project files.
 
 ### Configuration 
 
