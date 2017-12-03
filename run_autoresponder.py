@@ -20,6 +20,7 @@ def run():
     start_time = datetime.datetime.now()
     initialize()
     connect_to_mail_servers()
+    check_folder_configuration()
     mails = fetch_emails()
     for mail in mails:
         process_email(mail)
@@ -75,6 +76,16 @@ def load_config_from_file(file_path):
 def connect_to_mail_servers():
     connect_to_imap()
     connect_to_smtp()
+
+
+def check_folder_configuration():
+    (retcode, msg_count) = incoming_mail_server.select(config['folders.inbox'])
+    if retcode != "OK":
+        print_error_and_exit("Inbox folder does not exist: " + config['folders.inbox'])
+    (retcode, msg_count) = incoming_mail_server.select(config['folders.trash'])
+    if retcode != "OK":
+        print_error_and_exit("Trash folder does not exist: " + config['folders.trash'])
+    pass
 
 
 def connect_to_imap():
