@@ -5,64 +5,72 @@ import email
 import email.header
 import email.mime.text
 import imaplib
+import os
 import re
 import smtplib
 import sys
+from _socket import gaierror
 
 config = None
+config_file_path = "autoresponder.config.ini"
 incoming_mail_server = None
 outgoing_mail_server = None
-processed_mail_counter = 0
-pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
+statistics = {
+    "start_time": datetime.datetime.now(),
+    "mails_loading_error": 0,
+    "mails_total": 0,
+    "mails_processed": 0,
+    "mails_in_trash": 0,
+    "mails_wrong_sender": 0
+}
 
 
 def run():
-    start_time = datetime.datetime.now()
+    get_config_file_path()
     initialize_configuration()
     connect_to_mail_servers()
     check_folder_names()
     mails = fetch_emails()
     for mail in mails:
         process_email(mail)
-    print("Replied to and deleted " + str(processed_mail_counter) + " emails in total.")
-    incoming_mail_server.close()
-    incoming_mail_server.logout()
-    outgoing_mail_server.quit()
-    run_time = datetime.datetime.now() - start_time
-    print("Script run successful in " + str(run_time.total_seconds()) + " seconds.")
+    log_statistics()
+    shutdown(0)
+
+
+def get_config_file_path():
+    if "--help" in sys.argv or "-h" in sys.argv:
+        display_help_text()
+    if "--config-path" in sys.argv and len(sys.argv) >= 3:
+        global config_file_path
+        config_file_path = sys.argv[2]
+    if not os.path.isfile(config_file_path):
+        shutdown_with_error("Configuration file not found. Expected it at '" + config_file_path + "'.")
 
 
 def initialize_configuration():
-    if "--help" in sys.argv or "-h" in sys.argv:
-        display_help_text()
-    config_file_location = "autoresponder.config.ini"
-    if "--config-path" in sys.argv and len(sys.argv) >= 3:
-        config_file_location = sys.argv[2]
-    print("Using '" + config_file_location + "' as location for config file.")
-    load_config_from_file(config_file_location)
-
-
-def load_config_from_file(file_path):
-    config_file = configparser.ConfigParser()
-    config_file.read(file_path, encoding="UTF-8")
-    global config
-    config = {
-        'in.user': safe_cast(config_file["login credentials"]["mailserver.incoming.username"], str),
-        'in.pw': safe_cast(config_file["login credentials"]["mailserver.incoming.password"], str),
-        'out.user': safe_cast(config_file["login credentials"]["mailserver.outgoing.username"], str),
-        'out.pw': safe_cast(config_file["login credentials"]["mailserver.outgoing.password"], str),
-        'display.name': safe_cast(config_file["login credentials"]["mailserver.outgoing.display.name"], str),
-        'display.mail': safe_cast(config_file["login credentials"]["mailserver.outgoing.display.mail"], str),
-        'in.host': safe_cast(config_file["mail server settings"]["mailserver.incoming.imap.host"], str),
-        'in.port': safe_cast(config_file["mail server settings"]["mailserver.incoming.imap.port.ssl"], str),
-        'out.host': safe_cast(config_file["mail server settings"]["mailserver.outgoing.smtp.host"], str),
-        'out.port': safe_cast(config_file["mail server settings"]["mailserver.outgoing.smtp.port.tls"], str),
-        'folders.inbox': safe_cast(config_file["mail server settings"]["mailserver.incoming.folders.inbox.name"], str),
-        'folders.trash': safe_cast(config_file["mail server settings"]["mailserver.incoming.folders.trash.name"], str),
-        'request.from': safe_cast(config_file["mail content settings"]["mail.request.from"], str),
-        'reply.subject': safe_cast(config_file["mail content settings"]["mail.reply.subject"], str).strip(),
-        'reply.body': safe_cast(config_file["mail content settings"]["mail.reply.body"], str).strip()
-    }
+    try:
+        config_file = configparser.ConfigParser()
+        config_file.read(config_file_path, encoding="UTF-8")
+        global config
+        config = {
+            'in.user': cast(config_file["login credentials"]["mailserver.incoming.username"], str),
+            'in.pw': cast(config_file["login credentials"]["mailserver.incoming.password"], str),
+            'out.user': cast(config_file["login credentials"]["mailserver.outgoing.username"], str),
+            'out.pw': cast(config_file["login credentials"]["mailserver.outgoing.password"], str),
+            'display.name': cast(config_file["login credentials"]["mailserver.outgoing.display.name"], str),
+            'display.mail': cast(config_file["login credentials"]["mailserver.outgoing.display.mail"], str),
+            'in.host': cast(config_file["mail server settings"]["mailserver.incoming.imap.host"], str),
+            'in.port': cast(config_file["mail server settings"]["mailserver.incoming.imap.port.ssl"], str),
+            'out.host': cast(config_file["mail server settings"]["mailserver.outgoing.smtp.host"], str),
+            'out.port': cast(config_file["mail server settings"]["mailserver.outgoing.smtp.port.tls"], str),
+            'folders.inbox': cast(config_file["mail server settings"]["mailserver.incoming.folders.inbox.name"], str),
+            'folders.trash': cast(config_file["mail server settings"]["mailserver.incoming.folders.trash.name"], str),
+            'request.from': cast(config_file["mail content settings"]["mail.request.from"], str),
+            'reply.subject': cast(config_file["mail content settings"]["mail.reply.subject"], str).strip(),
+            'reply.body': cast(config_file["mail content settings"]["mail.reply.body"], str).strip()
+        }
+    except KeyError as e:
+        shutdown_with_error("Configuration file is invalid! (Key not found: " + str(e) + ")")
 
 
 def connect_to_mail_servers():
@@ -73,46 +81,50 @@ def connect_to_mail_servers():
 def check_folder_names():
     (retcode, msg_count) = incoming_mail_server.select(config['folders.inbox'])
     if retcode != "OK":
-        print_error_and_exit("Inbox folder does not exist: " + config['folders.inbox'])
+        shutdown_with_error("Inbox folder does not exist: " + config['folders.inbox'])
     (retcode, msg_count) = incoming_mail_server.select(config['folders.trash'])
     if retcode != "OK":
-        print_error_and_exit("Trash folder does not exist: " + config['folders.trash'])
+        shutdown_with_error("Trash folder does not exist: " + config['folders.trash'])
     pass
 
 
 def connect_to_imap():
-    print("Connecting to IMAP server '" + config['in.host']
-          + "' on port " + config['in.port'] + " as user '" + config['in.user'] + "'... ", end='')
+    try:
+        do_connect_to_imap()
+    except gaierror:
+        shutdown_with_error("IMAP connection failed! Specified host not found.")
+    except imaplib.IMAP4_SSL.error as e:
+        shutdown_with_error("IMAP login failed! Reason: '" + cast(e.args[0], str, 'UTF-8') + "'.")
+    except Exception as e:
+        shutdown_with_error("IMAP connection/login failed! Reason: '" + cast(e, str) + "'.")
 
+
+def do_connect_to_imap():
     global incoming_mail_server
     incoming_mail_server = imaplib.IMAP4_SSL(config['in.host'], config['in.port'])
-
-    try:
-        (retcode, capabilities) = incoming_mail_server.login(config['in.user'], config['in.pw'])
-        if retcode != "OK":
-            print("FAIL")
-            print_error_and_exit("Login failed with return code '" + retcode + "'!")
-        print("SUCCESS")
-    except Exception as e:
-        print_error_and_exit(e)
+    (retcode, capabilities) = incoming_mail_server.login(config['in.user'], config['in.pw'])
+    if retcode != "OK":
+        shutdown_with_error("IMAP login failed! Return code: '" + cast(retcode, str) + "'.")
 
 
 def connect_to_smtp():
-    print("Connecting to SMTP server '" + config['out.host']
-          + "' on port " + config['out.port'] + " as user '" + config['out.user'] + "'... ", end='')
+    try:
+        do_connect_to_smtp()
+    except gaierror:
+        shutdown_with_error("SMTP connection failed! Specified host not found.")
+    except smtplib.SMTPAuthenticationError as e:
+        shutdown_with_error("SMTP login failed! Reason: '" + cast(e.smtp_error, str, 'UTF-8') + "'.")
+    except Exception as e:
+        shutdown_with_error("SMTP connection/login failed! Reason: '" + cast(e, str) + "'.")
 
+
+def do_connect_to_smtp():
     global outgoing_mail_server
     outgoing_mail_server = smtplib.SMTP(config['out.host'], config['out.port'])
     outgoing_mail_server.starttls()
-
-    try:
-        (retcode, capabilities) = outgoing_mail_server.login(config['out.user'], config['out.pw'])
-        if retcode != 235:
-            print("FAIL")
-            print_error_and_exit("Login failed with return code '" + str(retcode) + "'!")
-        print("SUCCESS")
-    except Exception as e:
-        print_error_and_exit(e)
+    (retcode, capabilities) = outgoing_mail_server.login(config['out.user'], config['out.pw'])
+    if retcode != 235:
+        shutdown_with_error("SMTP login failed! Return code: '" + str(retcode) + "'.")
 
 
 def fetch_emails():
@@ -124,32 +136,33 @@ def fetch_emails():
         for message_id in message_ids[0].split():
             # get the actual message for the id
             (retcode, data) = incoming_mail_server.fetch(message_id, '(RFC822)')
-            if retcode != 'OK':
-                print_error_and_exit("ERROR getting message with id '" + message_id + "'.")
-            else:
+            if retcode == 'OK':
                 # parse the message into a useful format
                 message = email.message_from_string(data[0][1].decode('utf-8'))
                 message['autoresponder_email_id'] = message_id
                 messages.append(message)
-        print("Got " + str(len(messages)) + " emails from inbox.")
+            else:
+                statistics['mails_loading_error'] += 1
+                log_warning("Failed to get email with id '" + message_id + "'.")
+        statistics['mails_total'] = len(messages)
         return messages
     else:
-        print("Inbox contains no emails.")
         return []
 
 
 def process_email(mail):
-    mail_from = email.header.decode_header(mail['From'])
-    mail_sender = mail_from[-1]
-    mail_sender = safe_cast(mail_sender[0], str, 'UTF-8')
-    if config['request.from'] in mail_sender:
-        reply_to_email(mail)
-        # delete_email(mail)
-        global processed_mail_counter
-        processed_mail_counter += 1
-    else:
-        # TODO handle mails from incorrect senders
-        pass
+    try:
+        mail_from = email.header.decode_header(mail['From'])
+        mail_sender = mail_from[-1]
+        mail_sender = cast(mail_sender[0], str, 'UTF-8')
+        if config['request.from'] in mail_sender:
+            reply_to_email(mail)
+            delete_email(mail)
+        else:
+            statistics['mails_wrong_sender'] += 1
+        statistics['mails_processed'] += 1
+    except Exception as e:
+        log_warning("Unexpected error while processing email: '" + str(e) + "'.")
 
 
 def reply_to_email(mail):
@@ -158,27 +171,29 @@ def reply_to_email(mail):
     message['Subject'] = config['reply.subject']
     message['To'] = receiver_email
     message['From'] = email.utils.formataddr((
-        safe_cast(email.header.Header(config['display.name'], 'utf-8'), str), config['display.mail']))
+        cast(email.header.Header(config['display.name'], 'utf-8'), str), config['display.mail']))
     outgoing_mail_server.sendmail(config['display.mail'], receiver_email, message.as_string())
 
 
 def delete_email(mail):
     (resp, data) = incoming_mail_server.fetch(mail['autoresponder_email_id'], "(UID)")
-    mail_uid = parse_uid(safe_cast(data[0], str, 'UTF-8'))
+    mail_uid = parse_uid(cast(data[0], str, 'UTF-8'))
     result = incoming_mail_server.uid('COPY', mail_uid, config['folders.trash'])
-    if result[0] != "OK":
-        print("Copying mail to trash failed. Deleting anyways to prevent multiple response mails. "
-              "Reason for failure: " + str(result))
+    if result[0] == "OK":
+        statistics['mails_in_trash'] += 1
+    else:
+        log_warning("Copying email to trash failed. Reason: " + str(result))
     incoming_mail_server.uid('STORE', mail_uid, '+FLAGS', '(\Deleted)')
     incoming_mail_server.expunge()
 
 
 def parse_uid(data):
+    pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
     match = pattern_uid.match(data)
     return match.group('uid')
 
 
-def safe_cast(obj, to_type, options=None):
+def cast(obj, to_type, options=None):
     try:
         if options is None:
             return to_type(obj)
@@ -188,13 +203,53 @@ def safe_cast(obj, to_type, options=None):
         return obj
 
 
-def print_error_and_exit(error):
-    print("Unexpected error occurred!")
-    print(str(error))
-    global incoming_mail_server
+def shutdown_with_error(message):
+    message = "Error! " + str(message)
+    message += "\nCurrent configuration file path: '" + str(config_file_path) + "'."
+    if config is not None:
+        message += "\nCurrent configuration: " + str(config)
+    print(message)
+    shutdown(-1)
+
+
+def log_warning(message):
+    print("Warning! " + message)
+
+
+def log_statistics():
+    run_time = datetime.datetime.now() - statistics['start_time']
+    loading_errors = statistics['mails_loading_error']
+    processing_errors = statistics['mails_total'] - statistics['mails_processed']
+    moving_errors = statistics['mails_processed'] - statistics['mails_in_trash']
+    total_warnings = loading_errors + processing_errors + moving_errors
+    wrong_sender_count = statistics['mails_wrong_sender']
+    message = "Executed "
+    message += "without warnings " if total_warnings is 0 else "with " + str(total_warnings) + " warnings "
+    message += "in " + str(run_time.total_seconds()) + " seconds. "
+    message += "Got " + str(statistics['mails_total']) + " mails in total"
+    message += ". " if wrong_sender_count is 0 else " with " + str(wrong_sender_count) + " mails from wrong senders. "
+    if total_warnings is not 0:
+        message += "Encountered " + str(loading_errors) + " errors while loading mails, " + \
+                   str(processing_errors) + " errors while processing mails and " + \
+                   str(moving_errors) + " errors while moving mails to trash."
+    print(message)
+
+
+def display_help_text():
+    print("Options:")
+    print("\t--help: Display this help information")
+    print("\t--config-path <path/to/config/file>: "
+          "Override path to config file (defaults to same directory as the script is)")
+    exit(0)
+
+
+def shutdown(error_code):
     if incoming_mail_server is not None:
         try:
             incoming_mail_server.close()
+        except Exception:
+            pass
+        try:
             incoming_mail_server.logout()
         except Exception:
             pass
@@ -203,15 +258,7 @@ def print_error_and_exit(error):
             outgoing_mail_server.quit()
         except Exception:
             pass
-    exit(-1)
-
-
-def display_help_text():
-    print("Options:")
-    print("\t--help: Display this help information")
-    print("\t--config-path <path/to/config/file>: "
-          "Override path to config file (defaults to same directory as the script is)")
-    exit(1)
+    exit(error_code)
 
 
 run()
