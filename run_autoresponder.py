@@ -85,7 +85,6 @@ def check_folder_names():
     (retcode, msg_count) = incoming_mail_server.select(config['folders.trash'])
     if retcode != "OK":
         shutdown_with_error("Trash folder does not exist: " + config['folders.trash'])
-    pass
 
 
 def connect_to_imap():
@@ -222,17 +221,19 @@ def log_warning(message):
 
 def log_statistics():
     run_time = datetime.datetime.now() - statistics['start_time']
+    total_mails = statistics['mails_total']
     loading_errors = statistics['mails_loading_error']
-    processing_errors = statistics['mails_total'] - statistics['mails_processed']
-    moving_errors = statistics['mails_processed'] - statistics['mails_in_trash']
-    total_warnings = loading_errors + processing_errors + moving_errors
     wrong_sender_count = statistics['mails_wrong_sender']
+    processing_errors = total_mails - statistics['mails_processed']
+    moving_errors = statistics['mails_processed'] - statistics['mails_in_trash'] - statistics['mails_wrong_sender']
+    total_warnings = loading_errors + processing_errors + moving_errors
     message = "Executed "
     message += "without warnings " if total_warnings is 0 else "with " + str(total_warnings) + " warnings "
     message += "in " + str(run_time.total_seconds()) + " seconds. "
-    message += "Found " + str(statistics['mails_total']) + " emails in inbox"
+    message += "Found " + str(total_mails) + " emails in inbox"
     message += ". " if wrong_sender_count is 0 else " with " + str(wrong_sender_count) + " emails from wrong senders. "
-    message += "Replied to " + str(statistics['mails_processed']) + " emails. "
+    message += "Processed " + str(statistics['mails_processed']) + \
+               " emails, replied to " + str(total_mails - wrong_sender_count) + " emails. "
     if total_warnings is not 0:
         message += "Encountered " + str(loading_errors) + " errors while loading emails, " + \
                    str(processing_errors) + " errors while processing emails and " + \
