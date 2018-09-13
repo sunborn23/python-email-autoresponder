@@ -122,7 +122,7 @@ def do_connect_to_smtp():
     outgoing_mail_server = smtplib.SMTP(config['out.host'], config['out.port'])
     outgoing_mail_server.starttls()
     (retcode, capabilities) = outgoing_mail_server.login(config['out.user'], config['out.pw'])
-    if retcode != 235:
+    if not (retcode == 235 or retcode == 250):
         shutdown_with_error("SMTP login failed! Return code: '" + str(retcode) + "'.")
 
 
